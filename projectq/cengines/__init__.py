@@ -27,3 +27,5 @@ from ._replacer import (AutoReplacer,
                         DecompositionRule)
 from ._tagremover import TagRemover
 from ._testengine import CompareEngine, DummyEngine
+
+from ._dirtyreplacer import DirtyQubitReplacer
