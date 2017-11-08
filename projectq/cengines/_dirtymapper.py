@@ -127,12 +127,6 @@ class DirtyQubitMapper(BasicEngine):
                 mappedinto_ID = self._remap_dqubit(ID)
                 # self._send_qubit_pipeline(mappedinto_ID)
             elif isinstance(last_cmd.gate, FastForwardingGate):
-                # Question: what about measurements on dqubits?
-                # They should be fastforwarded to be accessible, but then I have
-                # a half-remapped dqubit for which I have to:
-                # - save the ID where I mapped it to
-                # - make sure everything from that ID gets cached until the dqubit
-                #   is deallocated
                 # Question: what about measurements on clean qubits involved with
                 # dirty qubits? Send their cached commands on? What about commands
                 # involving dirtyqubits?
