@@ -28,4 +28,4 @@ from ._replacer import (AutoReplacer,
 from ._tagremover import TagRemover
 from ._testengine import CompareEngine, DummyEngine
 
-from ._dirtyreplacer import DirtyQubitReplacer
+from ._dirtymapper import DirtyQubitMapper
