@@ -16,7 +16,7 @@
 import pdb
 
 from projectq.cengines import BasicEngine
-from projectq.meta import DirtyQubitTag
+from projectq.meta import DirtyQubitTag, TargetQubitTag
 from projectq.ops import   (AllocateQubitGate,
                             AllocateDirtyQubitGate,
                             DeallocateQubitGate,
@@ -42,7 +42,7 @@ class DirtyQubitMapper(BasicEngine):
         self.manualmap = -1
 
     def is_meta_tag_handler(self, tag):
-        if tag == DirtyQubitTag:
+        if tag in [DirtyQubitTag, TargetQubitTag]:
             return True
         else:
             return False
@@ -103,46 +103,64 @@ class DirtyQubitMapper(BasicEngine):
             assert(self._cached_cmds[snd_ID] == [])
             self._cached_cmds[snd_ID] = [-1]
         
-    def _find_remap_qubitID(self, rmp_ID):
+    def _find_target(self, rmp_ID):
         """
-        Finds a valid (i.e. not interacting with the dirty qubit) qubit to map
-        the qubit with rmp_ID into. If no such qubit is found, returns None
+        Finds a valid (i.e. not interacting with the dirty qubit) qubit (target)
+        to map the qubit with rmp_ID into.
+        If no such qubit is found, returns None
             -prefer qubits indicated by 'with DirtyQubits'
         """
         if self.manualmap != -1:
             return self.manualmap
+            
+        def check_involvement(ID_list):
+            for cmd in self._cached_cmds[rmp_ID]:
+                other_involved_qubits = [qb
+                                         for qreg in cmd.all_qubits
+                                         for qb in qreg
+                                         if qb.id != rmp_ID]
+                for qb in other_involved_qubits:
+                    if qb.id in ID_list:
+                        ID_list.remove(qb.id)
+            return ID_list
+
+        preferred_qubits = []
+        # check if we have a list of preferred targets for this dirty qubit
+        for tag in self._cached_cmds[rmp_ID][0].tags:
+            if isinstance(tag, TargetQubitTag):
+                preferred_qubits = tag.IDs
+        
+        if preferred_qubits != []:
+            # we found preferred targets
+            preferred_qubits = check_involvement(preferred_qubits)
+            if preferred_qubits != []:
+                # some of the preferred targets can be mapped into
+                self._print("Found preferred, possible qubits: " + str(preferred_qubits))
+                self._print("Remapping into " + str(preferred_qubits[0]))
+                return preferred_qubits[0]
         
         possible_qubits = [i for i,cmds
                            in enumerate(self._cached_cmds)
                            if cmds != [-1] ]
         possible_qubits.remove(rmp_ID)
         
-        for cmd in self._cached_cmds[rmp_ID]:
-            other_involved_qubits = [qb
-                                     for qreg in cmd.all_qubits
-                                     for qb in qreg
-                                     if qb.id != rmp_ID]
-            for qb in other_involved_qubits:
-                if qb.id in possible_qubits:
-                    possible_qubits.remove(qb.id)
+        possible_qubits = check_involvement(possible_qubits)
         
-        self._print("Found qubits that we can map into:")
-        self._print(possible_qubits)
+        self._print("Found qubits that we can map into: " + str(possible_qubits))
         
         if possible_qubits == []:
             return None
             
         self._print("Remapping into " + str(possible_qubits[0]))
-    
+        
         return possible_qubits[0]
         
     def _remap_dqubit(self, rmp_ID):
         """
         Remaps the operations on deallocated dirty qubit to a qubit not
-        interacting with that particular qubit, if such a qubit exists.
-        Returns the ID of the qubit it mapped the dirty qubit into (mappee),
-        plus whether the qubit mapped into was involved beforehand,
-        ie whether the commands have to stay cached or can be sent on
+        interacting with that particular qubit (target), if such a qubit exists.
+        Returns the ID of the target, plus whether the target was involved
+        beforehand, ie whether the commands have to stay cached or can be sent on
         """
         self._print("Remapping deallocated dqubit")
                     
@@ -155,7 +173,7 @@ class DirtyQubitMapper(BasicEngine):
             self._cached_cmds[rmp_ID] = [-1]
             return rmp_ID, True # don't send on our invalid flag
         
-        new_ID = self._find_remap_qubitID(rmp_ID)
+        new_ID = self._find_target(rmp_ID)
         
         # maybe there is no possible qubit to remap to
         if new_ID == None:
@@ -226,6 +244,9 @@ class DirtyQubitMapper(BasicEngine):
                 if not wait:
                     n = len(self._cached_cmds[mappedinto_ID])
                     self._send_qubit_pipeline(mappedinto_ID, n)
+                    
+        # second check:
+        # are there any 
 
     def _cache_cmd(self, cmd):
         """
@@ -265,6 +286,8 @@ class DirtyQubitMapper(BasicEngine):
         for cmd in command_list:
             self._print("Inspecting command:")
             self._print(cmd)
+            #if any(isinstance(tag, TargetQubitTag) for tag in cmd.tags):
+            
             # updating _cached_cmds
             if isinstance(cmd.gate, AllocateQubitGate):
                 new_ID = cmd.qubits[0][0].id
@@ -302,20 +325,20 @@ class DirtyQubitMapper(BasicEngine):
                 if isinstance(cmd.gate, DeallocateQubitGate):
                     self._print("Invalidating qubit ID")
                     dealloc_ID = cmd.qubits[0][0].id
-                    assert(self._cached_cmds[dealloc_ID] == [])
                     self._cached_cmds[dealloc_ID] = [-1]
                 self.send([cmd])
         self.print_state()
         self._print("\n\n")
     
+    
+    """
+    Helpers for "debugging"
+    """
     def _print(self, message):
         if self._verbose:
             print(message)
 
     def print_state(self):
-        """
-        Helper for "debugging"
-        """
         if not self._verbose:
             return
         print("----------------------------------")
