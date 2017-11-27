@@ -100,7 +100,7 @@ class DirtyQubitMapper(BasicEngine):
         
         if sent_deallocate:
             # invalidate ID if we sent the deallocation
-            assert(self._cached_cmds[snd_ID] == [])
+            assert self._cached_cmds[snd_ID] == []
             self._cached_cmds[snd_ID] = [-1]
         
     def _find_target(self, rmp_ID):
@@ -113,26 +113,72 @@ class DirtyQubitMapper(BasicEngine):
         if self.manualmap != -1:
             return self.manualmap
             
-        def check_involvement(ID_list):
-            for cmd in self._cached_cmds[rmp_ID]:
-                other_involved_qubits = [qb
-                                         for qreg in cmd.all_qubits
-                                         for qb in qreg
-                                         if qb.id != rmp_ID]
-                for qb in other_involved_qubits:
-                    if qb.id in ID_list:
-                        ID_list.remove(qb.id)
+        def check_involvement(check_ID, n, ID_list):
+            """
+            Deletes IDs out of the ID_list if they are involved with the first
+            n commands on qubit check_ID
+            """
+            self._print("-------------------------")
+            self._print("New call, looking at ID" + str(check_ID) +
+                        ", first " + str(n) + " cmds")
+            self._print(ID_list)
+            for i,cmd in enumerate(reversed(self._cached_cmds[check_ID][:n])):
+                self._print(cmd)
+                listpos = min(n,len(self._cached_cmds[check_ID]))-i-1
+                cmd_pos, other_involved_IDs = get_cmd_pos(check_ID, listpos)
+                for ID in other_involved_IDs:
+                    ID_list = check_involvement(ID, listpos, ID_list)
+                    if ID in ID_list:
+                        self._print("Found involvement with " + str(ID))
+                        ID_list.remove(ID)
             return ID_list
+            
+        def get_cmd_pos(ID, i):
+            """
+            Return a list of indices of the command at the i-th postion in ID's
+            cached commands, aswell as a list of all qubits IDs involved in that
+            command.
+            EXCLUDES THE ID ITSELF (in both lists)
+
+            Args:
+                ID (int): qubit index
+                i (int): command position in qubit ID's command list
+            """
+            other_IDs = [qb.id
+                       for qureg in self._cached_cmds[ID][i].all_qubits
+                       for qb in qureg
+                       if qb.id != ID]
+            # 1-qubit gate: only gate at index i is involved
+            if other_IDs:
+                return [], other_IDs
+
+            # When the same gate appears multiple time, we need to make sure not to
+            # match earlier instances of the gate applied to the same qubits. So we
+            # count how many there are, and skip over them when looking in the
+            # other lists.
+            cmd = self._cached_cmds[ID][i]
+            num_identical_to_skip = sum(1
+                                        for prev_cmd in self._cached_cmds[ID][:i]
+                                        if prev_cmd == cmd)
+            indices = []
+            for Id in other_IDs:
+                identical_indices = [i
+                                     for i, c in enumerate(self._cached_cmds[ID])
+                                     if c == cmd]
+                indices.append(identical_indices[num_identical_to_skip])
+            return indices, other_IDs
 
         preferred_qubits = []
         # check if we have a list of preferred targets for this dirty qubit
         for tag in self._cached_cmds[rmp_ID][0].tags:
             if isinstance(tag, TargetQubitTag):
-                preferred_qubits = tag.IDs
+                preferred_qubits += tag.IDs
         
         if preferred_qubits != []:
             # we found preferred targets
-            preferred_qubits = check_involvement(preferred_qubits)
+            preferred_qubits = check_involvement(rmp_ID,
+                                                 len(self._cached_cmds[rmp_ID]),
+                                                 preferred_qubits)
             if preferred_qubits != []:
                 # some of the preferred targets can be mapped into
                 self._print("Found preferred, possible qubits: " + str(preferred_qubits))
@@ -144,7 +190,9 @@ class DirtyQubitMapper(BasicEngine):
                            if cmds != [-1] ]
         possible_qubits.remove(rmp_ID)
         
-        possible_qubits = check_involvement(possible_qubits)
+        possible_qubits = check_involvement(rmp_ID,
+                                            len(self._cached_cmds[rmp_ID]),
+                                            possible_qubits)
         
         self._print("Found qubits that we can map into: " + str(possible_qubits))
         
@@ -164,7 +212,7 @@ class DirtyQubitMapper(BasicEngine):
         """
         self._print("Remapping deallocated dqubit")
                     
-        assert(self._is_dirty_alloc(self._cached_cmds[rmp_ID][0]))
+        assert self._is_dirty_alloc(self._cached_cmds[rmp_ID][0])
         
         # No gates performed on dqubit other than allocate/deallocate
         # we just have to clean up
@@ -172,9 +220,10 @@ class DirtyQubitMapper(BasicEngine):
             self._print("Don't have to remap 'empty' dqubit")
             self._cached_cmds[rmp_ID] = [-1]
             return rmp_ID, True # don't send on our invalid flag
-        
+            
+        self._print("####################################################")
         new_ID = self._find_target(rmp_ID)
-        
+        self._print("####################################################")
         # maybe there is no possible qubit to remap to
         if new_ID == None:
             return rmp_ID, False
@@ -228,7 +277,7 @@ class DirtyQubitMapper(BasicEngine):
                 # or it is not yet allocated - either way we don't do anything
                 continue
             last_cmd = self._cached_cmds[ID][-1]
-            assert(ID in [qubit.id
+            assert (ID in [qubit.id
                           for sublist in last_cmd.all_qubits
                           for qubit in sublist])
             if (self._is_dirty_alloc(self._cached_cmds[ID][0]) and
@@ -286,7 +335,6 @@ class DirtyQubitMapper(BasicEngine):
         for cmd in command_list:
             self._print("Inspecting command:")
             self._print(cmd)
-            #if any(isinstance(tag, TargetQubitTag) for tag in cmd.tags):
             
             # updating _cached_cmds
             if isinstance(cmd.gate, AllocateQubitGate):
@@ -298,7 +346,7 @@ class DirtyQubitMapper(BasicEngine):
                     self._cached_cmds.append([])
                 elif len(self._cached_cmds) > new_ID: 
                     # the allocation gate got delayed in a previous cengine
-                    assert(self._cached_cmds[new_ID] == [-1])
+                    assert self._cached_cmds[new_ID] == [-1]
                     self._cached_cmds[new_ID] = []
                 else:
                     # other allocation gates got delayed in previous cengines -
