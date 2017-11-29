@@ -23,8 +23,10 @@ from projectq.types import BasicQubit
 from projectq.ops import AllocateQubitGate, DeallocateQubitGate
 from ._util import insert_engine, drop_engine_after
 
+
 class DirtyQubitManagementError(Exception):
     pass
+
 
 # This tag could be integrated into DirtyQubitTag
 # makes checking for a DirtyQubitTag slightly more bothersome:
@@ -45,7 +47,7 @@ class TargetQubitTag(object):
 
     def __eq__(self, other):
         return isinstance(other, TargetQubitTag)
-    
+
     def __ne__(self, other):
         return not self.__eq__(other)
 
@@ -60,6 +62,7 @@ class DirtyQubitTag(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
+
 class TargetIndicator(BasicEngine):
     """
     Adds the TargetQubitTag to allocation gates which allocate dirty qubits
@@ -67,26 +70,28 @@ class TargetIndicator(BasicEngine):
     def __init__(self, target_qubits):
         self._targetIDs = [qb.id for qb in target_qubits]
         self._active_dqubits = []
-        
+
     def receive(self, cmd_list):
         for cmd in cmd_list:
-            if (isinstance(cmd.gate, AllocateQubitGate)
-                and DirtyQubitTag() in cmd.tags):
+            if isinstance(cmd.gate, AllocateQubitGate) and \
+               DirtyQubitTag() in cmd.tag:
                 cmd.tags.append(TargetQubitTag(self._targetIDs))
                 self._active_dqubits.append(cmd.qubits[0][0].id)
             elif isinstance(cmd.gate, DeallocateQubitGate):
                 try:
                     self._active_dqubits.remove(cmd.qubits[0][0].id)
-                except:
-                    pass # deallocated qubit was not dirty or not allocated
-                         # in this section
+                except ValueError:
+                    # deallocated qubit was not dirty or
+                    # not allocated in this section
+                    pass
             self.send([cmd])
-            
+
     def end_targetting(self):
         if self._active_dqubits != []:
             raise DirtyQubitManagementError(
                 "A dirty qubit allocated in this 'with DirtyQubits'-section " +
                 "has not been deallocated within the section")
+
 
 class DirtyQubits(object):
     """
