@@ -21,7 +21,8 @@ import pytest
 from projectq import MainEngine
 from projectq.cengines import DirtyQubitMapper, DummyEngine
 from projectq.backends import ResourceCounter
-from projectq.ops import CNOT, H, Toffoli, HGate, AllocateQubitGate
+from projectq.ops import X, H, CNOT, Toffoli, HGate, AllocateQubitGate
+from projectq.meta import DirtyQubits
 
 
 @pytest.fixture
@@ -41,7 +42,7 @@ def test_empty_dqubit(dqubitmapper_testengine):
     qubit = dqubitmapper_testengine.allocate_qubit()
     del dqubit
 
-    assert counter.max_width == 1, "Dirty Qubit was remapped"
+    assert counter.max_width == 1, "Dirty Qubit was not remapped"
 
 
 def test_noninteracting_dqubit(dqubitmapper_testengine):
@@ -58,19 +59,19 @@ def test_noninteracting_dqubit(dqubitmapper_testengine):
     H | dqubit
     H | qubit
 
-    assert len(dummy.received_commands) == 2, "Commands on dqubit are cached"
+    assert len(dummy.received_commands) == 2, "Commands on dqubit aren't cached"
 
     del dqubit
 
     # H^2 was mapped into qubit
-    assert len(dummy.received_commands) == 4, "Gates were sent on"
+    assert len(dummy.received_commands) == 4, "Gates were not sent on"
     assert all(isinstance(cmd.gate, HGate)
                for cmd in dummy.received_commands[1:]), (
-               "Gates are Hadamard Gates")
+               "Gates are not Hadamard Gates")
     assert all(qb.id == 1
                for cmd in dummy.received_commands
                for qreg in cmd.qubits
-               for qb in qreg), "Gates act on qubit1"
+               for qb in qreg), "Gates don't act on qubit1"
 
 
 def test_interacting_dqubit_notremap(dqubitmapper_testengine):
@@ -89,11 +90,11 @@ def test_interacting_dqubit_notremap(dqubitmapper_testengine):
     CNOT | (qubit1, dqubit)
 
     assert len(dummy.received_commands) == 2, (
-           "Clean allocations were not cached")
+           "Clean allocations were cached")
 
     del dqubit
 
-    assert counter.max_width == 3, "dqubit was not be remapped"
+    assert counter.max_width == 3, "dqubit was remapped"
 
 
 def test_interacting_dqubit_remap(dqubitmapper_testengine):
@@ -111,13 +112,13 @@ def test_interacting_dqubit_remap(dqubitmapper_testengine):
 
     del dqubit
 
-    assert counter.max_width == 2, "dqubit was remapped"
+    assert counter.max_width == 2, "dqubit was not remapped"
     # Question: Why here qubits[][]
     assert dummy.received_commands[-1].qubits[0][0].id == 2, (
-           "CNOT acts on qubit2")
+           "CNOT does not act on qubit2")
     # and here control_qubits[]
     assert dummy.received_commands[-1].control_qubits[0].id == 1, (
-           "CNOT controlled on qubit1")
+           "CNOT is not controlled on qubit1")
 
 
 def test_toffoli_remap(dqubitmapper_testengine):
@@ -137,15 +138,72 @@ def test_toffoli_remap(dqubitmapper_testengine):
     del dqubit
 
     assert dummy.received_commands[-2].qubits[0][0].id == 1, (
-           "Toffoli acts on qureg[1]")
+           "Toffoli does not act on qureg[1]")
     assert dummy.received_commands[-2].control_qubits[0].id == 0, (
-           "Toffoli controlled on qureg[0]")
+           "Toffoli not controlled on qureg[0]")
     assert dummy.received_commands[-2].control_qubits[1].id == 2, (
-           "Toffoli controlled on qureg[2]")
+           "Toffoli not controlled on qureg[2]")
 
     assert dummy.received_commands[-1].qubits[0][0].id == 2, (
-           "Toffoli acts on qureg[2]")
+           "Toffoli does not act on qureg[2]")
     assert dummy.received_commands[-1].control_qubits[0].id == 0, (
-           "Toffoli controlled on qureg[0]")
+           "Toffoli not controlled on qureg[0]")
     assert dummy.received_commands[-1].control_qubits[1].id == 1, (
-           "Toffoli controlled on qureg[1]")
+           "Toffoli not controlled on qureg[1]")
+
+
+def test_flush_works(dqubitmapper_testengine):
+    """
+    Test that flush works correctly
+    """
+    dummy = dqubitmapper_testengine.backend
+    counter = dqubitmapper_testengine.next_engine.next_engine
+
+    qubit = dqubitmapper_testengine.allocate_qubit()
+    dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
+    
+    CNOT | (qubit, dqubit)
+
+    dqubitmapper_testengine.flush()
+
+    lastcmd = dummy.received_commands[-1]
+    assert (lastcmd.gate == X and
+            lastcmd.qubits[0][0].id == 1 and
+            lastcmd.control_qubits[0].id == 0), "CNOT gate was not flushed"
+
+
+def test_dont_remap_partially_cached(dqubitmapper_testengine):
+    """
+    Test that a dqubit with only a partially cached lifetime does not get
+    remapped
+    """
+    dummy = dqubitmapper_testengine.backend
+    counter = dqubitmapper_testengine.next_engine.next_engine
+
+    qubit = dqubitmapper_testengine.allocate_qubit()
+    dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
+
+    dqubitmapper_testengine.flush()
+
+    del dqubit
+
+    assert counter.max_width == 2, "dqubit was remapped"
+
+def test_targetting(dqubitmapper_testengine):
+    """
+    Test that qubits targetted by 'with DirtyQubits' are preferably mapped into
+    """
+    dummy = dqubitmapper_testengine.backend
+    counter = dqubitmapper_testengine.next_engine.next_engine
+
+    qureg = dqubitmapper_testengine.allocate_qureg(2)
+
+    # ALSO TEST WITH OPTIMIZED REMAPPER
+    with DirtyQubits(dqubitmapper_testengine, [qureg[1]]):
+        dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
+        H | dqubit
+        del dqubit
+
+    assert dummy.received_commands[-1].qubits[0][0].id == 1, (
+           "dqubit was not remapped into target")
+    

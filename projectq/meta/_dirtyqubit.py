@@ -55,9 +55,22 @@ class TargetQubitTag(object):
 class DirtyQubitTag(object):
     """
     Dirty qubit meta tag
+    Contains a list of targets, which holds the ids of target qubits.
+    These targets are the preferred qubits to map the dirty qubit into
     """
+    def __init__(self, targets=[]):
+        """
+        targets (list of ints): IDs of qubits that the dirty qubit
+        preferably gets mapped into
+        """
+        self.target_IDs = targets
+
     def __eq__(self, other):
-        return isinstance(other, DirtyQubitTag)
+        # the second part of the expression gets evaluated conditionally,
+        # ie only if both objects are DirtyQubitTags their target lists are
+        # compared
+        return (isinstance(other, DirtyQubitTag) and
+                sorted(self.target_IDs) == sorted(other.target_IDs))
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -65,17 +78,28 @@ class DirtyQubitTag(object):
 
 class TargetIndicator(BasicEngine):
     """
-    Adds the TargetQubitTag to allocation gates which allocate dirty qubits
+    Indicates for each dirty qubit allocation which the targets for that dirty
+    qubit are (which qubits the dqubit should get mapped into).
+    Does so by adding the IDs of the targets to the target list in the
+    DirtyQubitTag of QubitAllocationGates
     """
     def __init__(self, target_qubits):
-        self._targetIDs = [qb.id for qb in target_qubits]
+        self._target_IDs = [qb.id for qb in target_qubits]
         self._active_dqubits = []
 
     def receive(self, cmd_list):
         for cmd in cmd_list:
             if isinstance(cmd.gate, AllocateQubitGate) and \
-               DirtyQubitTag() in cmd.tag:
-                cmd.tags.append(TargetQubitTag(self._targetIDs))
+               any(isinstance(tag, DirtyQubitTag) for tag in cmd.tags):
+                for tag in cmd.tags:
+                    if isinstance(tag, DirtyQubitTag):
+
+                        print("Targets before adding: " + str(tag.target_IDs))
+
+                        tag.target_IDs.extend(self._target_IDs)
+
+                        print("Targets after adding: " + str(tag.target_IDs))
+
                 self._active_dqubits.append(cmd.qubits[0][0].id)
             elif isinstance(cmd.gate, DeallocateQubitGate):
                 try:
@@ -128,6 +152,7 @@ class DirtyQubits(object):
         if isinstance(qubits, BasicQubit):
             qubits = [qubits]
         self._targets = qubits
+        #  CHECK THAT DIRTYQUBITTAG IS SUPPOERTED, POINTLESS OTHERWISE
 
     def __enter__(self):
         if len(self._targets) > 0:

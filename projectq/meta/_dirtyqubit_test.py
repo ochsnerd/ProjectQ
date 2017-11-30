@@ -14,15 +14,49 @@
 
 """Tests for projectq.meta._dirtyqubit.py"""
 
-from projectq.meta import ComputeTag
+import pytest
 
-from projectq.meta import _dirtyqubit
+from projectq import MainEngine
+from projectq.cengines import DummyEngine, DirtyQubitMapper
+from projectq.backends import ResourceCounter
+from projectq.ops import X, H, CNOT, Toffoli, HGate, AllocateQubitGate
+from projectq.meta import DirtyQubitTag, ComputeTag, DirtyQubits
+
+
+
+@pytest.fixture
+def dqubitsection_testengine():
+    #  DirtyQubitMapper in enginelist so that DirtyQubitTag is supported
+    return MainEngine(DummyEngine(save_commands=True),
+                      [DummyEngine(save_commands=True), DirtyQubitMapper()])
 
 
 def test_dirty_qubit_tag():
-    tag0 = _dirtyqubit.DirtyQubitTag()
-    tag1 = _dirtyqubit.DirtyQubitTag()
+    tag0 = DirtyQubitTag()
+    tag1 = DirtyQubitTag()
     tag2 = ComputeTag()
     assert tag0 == tag1
     assert not tag0 != tag1
     assert not tag0 == tag2
+
+
+def test_tags_added_dqubitsection(dqubitsection_testengine):
+    """
+    Tests whether the correct tags are added by the DirtyQubits-Section
+    """
+    dummy = dqubitsection_testengine.next_engine  # before dqubit gets remapped
+    
+    qubit = dqubitsection_testengine.allocate_qubit()
+    
+    with DirtyQubits(dqubitsection_testengine, qubit):
+        dqubit = dqubitsection_testengine.allocate_qubit(dirty=True)
+        del dqubit
+
+    assert isinstance(dummy.received_commands[-2].tags[0], DirtyQubitTag), (
+           "DirtyQubitTag was not added to AllocateQubit command," +
+           " problem in BasicEngine?")
+    assert dummy.received_commands[-2].tags[0].target_IDs == [0], (
+           "The target ID is not 0")
+
+# Isn't this what pytest is doing?
+test_tags_added_dqubitsection(dqubitsection_testengine())

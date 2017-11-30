@@ -13,8 +13,6 @@
 # David Ochsner
 # 2017-10-18
 # ochsnerd@student.ethz.ch
-import pdb
-
 from projectq.cengines import BasicEngine
 from projectq.meta import DirtyQubitTag, TargetQubitTag
 from projectq.ops import (AllocateQubitGate,
