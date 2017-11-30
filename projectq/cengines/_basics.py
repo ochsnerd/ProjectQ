@@ -114,6 +114,7 @@ class BasicEngine(object):
             from projectq.meta import DirtyQubitTag
             if self.is_meta_tag_supported(DirtyQubitTag):
                 cmd.tags += [DirtyQubitTag()]
+                print("Right after creating the tag: " + str(cmd.tags[-1].target_IDs))
                 self.main_engine.dirty_qubits.add(qb[0].id)
         self.main_engine.active_qubits.add(qb[0])
         self.send([cmd])
