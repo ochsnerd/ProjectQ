@@ -114,13 +114,12 @@ class BasicEngine(object):
             from projectq.meta import DirtyQubitTag
             if self.is_meta_tag_supported(DirtyQubitTag):
                 cmd.tags += [DirtyQubitTag()]
-                print("Right after creating the tag: " + str(cmd.tags[-1].target_IDs))
                 self.main_engine.dirty_qubits.add(qb[0].id)
         self.main_engine.active_qubits.add(qb[0])
         self.send([cmd])
         return qb
 
-    def allocate_qureg(self, n):
+    def allocate_qureg(self, n, dirty=False):
         """
         Allocate n qubits and return them as a quantum register, which is a
         list of qubit objects.
@@ -130,7 +129,7 @@ class BasicEngine(object):
         Returns:
             Qureg of length n, a list of n newly allocated qubits.
         """
-        return Qureg([self.allocate_qubit()[0] for _ in range(n)])
+        return Qureg([self.allocate_qubit(dirty=dirty)[0] for _ in range(n)])
 
     def deallocate_qubit(self, qubit):
         """
