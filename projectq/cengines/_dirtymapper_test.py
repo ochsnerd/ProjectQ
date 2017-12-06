@@ -21,7 +21,13 @@ import pytest
 from projectq import MainEngine
 from projectq.cengines import DirtyQubitMapper, DummyEngine
 from projectq.backends import ResourceCounter
-from projectq.ops import X, H, CNOT, Toffoli, HGate, AllocateQubitGate
+from projectq.ops import (X,
+                          H,
+                          CNOT,
+                          HGate,
+                          Toffoli,
+                          AllocateQubitGate,
+                          DeallocateQubitGate)
 from projectq.meta import DirtyQubits
 
 
@@ -59,7 +65,8 @@ def test_noninteracting_dqubit(dqubitmapper_testengine):
     H | dqubit
     H | qubit
 
-    assert len(dummy.received_commands) == 2, "Commands on dqubit aren't cached"
+    assert len(dummy.received_commands) == 2, (
+           "Commands on dqubit aren't cached")
 
     del dqubit
 
@@ -161,7 +168,7 @@ def test_flush_works(dqubitmapper_testengine):
 
     qubit = dqubitmapper_testengine.allocate_qubit()
     dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
-    
+
     CNOT | (qubit, dqubit)
 
     dqubitmapper_testengine.flush()
@@ -189,6 +196,7 @@ def test_dont_remap_partially_cached(dqubitmapper_testengine):
 
     assert counter.max_width == 2, "dqubit was remapped"
 
+
 def test_targetting(dqubitmapper_testengine):
     """
     Test that qubits targetted by 'with DirtyQubits' are preferably mapped into
@@ -206,4 +214,48 @@ def test_targetting(dqubitmapper_testengine):
 
     assert dummy.received_commands[-1].qubits[0][0].id == 1, (
            "dqubit was not remapped into target")
-    
+
+
+def test_ignoring_FastForwardingGates(dqubitmapper_testengine):
+    """
+    Test that FastForwardingGates are ignored if flag is set, ie. cached
+    """
+    dqubitmapper_testengine.next_engine._ignore_FF = True
+    dummy = dqubitmapper_testengine.backend
+    counter = dqubitmapper_testengine.next_engine.next_engine
+
+    qureg = dqubitmapper_testengine.allocate_qureg(2)
+    dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
+
+    CNOT | (dqubit, qureg[0])
+
+    del qureg[0]
+
+    assert isinstance(dummy.received_commands[-1].gate, AllocateQubitGate), (
+           "Deallocate on clean qubit was not cached")
+
+    del dqubit
+
+    assert counter.max_width == 2, "Dirty qubit was not remapped"
+
+
+def test_forwarding_FastForwardingGates(dqubitmapper_testengine):
+    """
+    Test that FastForwardingGates are not ignored, ie. sent on
+    """
+    dummy = dqubitmapper_testengine.backend
+    counter = dqubitmapper_testengine.next_engine.next_engine
+
+    qureg = dqubitmapper_testengine.allocate_qureg(2)
+    dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
+
+    CNOT | (dqubit, qureg[0])
+
+    del qureg[0]
+
+    assert isinstance(dummy.received_commands[-1].gate, DeallocateQubitGate), (
+           "Deallocate on clean qubit was cached")
+
+    del dqubit
+
+    assert counter.max_width == 3, "Dirty qubit was remapped"
