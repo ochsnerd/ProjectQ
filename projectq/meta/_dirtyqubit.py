@@ -63,14 +63,14 @@ class DirtyQubitTag(object):
         targets (list of ints): IDs of qubits that the dirty qubit
         preferably gets mapped into
         """
-        self.target_IDs = targets
+        self.target_IDs = set(targets)
 
     def __eq__(self, other):
         # the second part of the expression gets evaluated conditionally,
         # ie only if both objects are DirtyQubitTags their target lists are
         # compared
         return (isinstance(other, DirtyQubitTag) and
-                sorted(self.target_IDs) == sorted(other.target_IDs))
+                self.target_IDs == other.target_IDs)
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -84,8 +84,8 @@ class TargetIndicator(BasicEngine):
     DirtyQubitTag of QubitAllocationGates
     """
     def __init__(self, target_qubits):
-        self._target_IDs = [qb.id for qb in target_qubits]
-        self._active_dqubits = []
+        self._target_IDs = set([qb.id for qb in target_qubits])
+        self._active_dqubits = set()
 
     def receive(self, cmd_list):
         for cmd in cmd_list:
@@ -93,25 +93,14 @@ class TargetIndicator(BasicEngine):
                any(isinstance(tag, DirtyQubitTag) for tag in cmd.tags):
                 for tag in cmd.tags:
                     if isinstance(tag, DirtyQubitTag):
-
-                        print("Targets before adding: " + str(tag.target_IDs))
-
-                        tag.target_IDs.extend(self._target_IDs)
-
-                        print("Targets after adding: " + str(tag.target_IDs))
-
-                self._active_dqubits.append(cmd.qubits[0][0].id)
+                        tag.target_IDs.update(self._target_IDs)
+                self._active_dqubits.add(cmd.qubits[0][0].id)
             elif isinstance(cmd.gate, DeallocateQubitGate):
-                try:
-                    self._active_dqubits.remove(cmd.qubits[0][0].id)
-                except ValueError:
-                    # deallocated qubit was not dirty or
-                    # not allocated in this section
-                    pass
+                    self._active_dqubits.discard(cmd.qubits[0][0].id)
             self.send([cmd])
 
     def end_targetting(self):
-        if self._active_dqubits != []:
+        if self._active_dqubits:
             raise DirtyQubitManagementError(
                 "A dirty qubit allocated in this 'with DirtyQubits'-section " +
                 "has not been deallocated within the section")
@@ -160,7 +149,7 @@ class DirtyQubits(object):
             insert_engine(self.engine, self._targeter)
 
     def __exit__(self, type, value, traceback):
-        self._targeter.end_targetting()
         # remove control handler from engine list (i.e. skip it)
         if len(self._targets) > 0:
+            self._targeter.end_targetting()
             drop_engine_after(self.engine)

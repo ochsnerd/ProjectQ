@@ -20,7 +20,10 @@ from projectq import MainEngine
 from projectq.cengines import DummyEngine, DirtyQubitMapper
 from projectq.backends import ResourceCounter
 from projectq.ops import X, H, CNOT, Toffoli, HGate, AllocateQubitGate
-from projectq.meta import DirtyQubitTag, ComputeTag, DirtyQubits
+from projectq.meta import (DirtyQubitTag,
+                           ComputeTag,
+                           DirtyQubits,
+                           DirtyQubitManagementError)
 
 
 
@@ -45,18 +48,47 @@ def test_tags_added_dqubitsection(dqubitsection_testengine):
     Tests whether the correct tags are added by the DirtyQubits-Section
     """
     dummy = dqubitsection_testengine.next_engine  # before dqubit gets remapped
-    
+
     qubit = dqubitsection_testengine.allocate_qubit()
-    
+
     with DirtyQubits(dqubitsection_testengine, qubit):
         dqubit = dqubitsection_testengine.allocate_qubit(dirty=True)
         del dqubit
+        
+    assert any(isinstance(tag, DirtyQubitTag)
+               for tag in dummy.received_commands[-1].tags), (
+           "DirtyQubitTag was not added to DeallocateQubit command," +
+           " problem in BasicEngine?")
 
-    assert isinstance(dummy.received_commands[-2].tags[0], DirtyQubitTag), (
+    assert any(isinstance(tag, DirtyQubitTag)
+               for tag in dummy.received_commands[-2].tags), (
            "DirtyQubitTag was not added to AllocateQubit command," +
            " problem in BasicEngine?")
-    assert dummy.received_commands[-2].tags[0].target_IDs == [0], (
+    assert dummy.received_commands[-2].tags[0].target_IDs == {0}, (
            "The target ID is not 0")
 
-# Isn't this what pytest is doing?
-test_tags_added_dqubitsection(dqubitsection_testengine())
+
+def test_error_missing_deallocate_dqubitsection(dqubitsection_testengine):
+    """
+    Tests if an error is raised when a dirty qubit allocated in a DirtyQubits-
+    section is not deallocated
+    """
+    qubit = dqubitsection_testengine.allocate_qubit()
+    try:
+        with DirtyQubits(dqubitsection_testengine,qubit):
+            qubit2 = dqubitsection_testengine.allocate_qubit()
+    except DirtyQubitManagementError:
+        assert False, "Error raised on missing deallocation of clean qubit"
+
+    try:
+        with DirtyQubits(dqubitsection_testengine,qubit):
+            dqubit = dqubitsection_testengine.allocate_qubit(dirty=True)
+    except DirtyQubitManagementError:
+        return
+    assert False, "No error raised on missing deallocation of dirty qubit"
+
+
+if __name__ == '__main__':
+    test_error_missing_deallocate_dqubitsection(dqubitsection_testengine())
+
+
