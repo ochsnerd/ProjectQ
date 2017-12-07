@@ -14,7 +14,8 @@
 # 2017-10-18
 # ochsnerd@student.ethz.ch
 from projectq.cengines import BasicEngine
-from projectq.meta import DirtyQubitTag
+from projectq.types import BasicQubit
+from projectq.meta import DirtyQubitTag, DirtyQubitManagementError
 from projectq.ops import (AllocateQubitGate,
                           AllocateDirtyQubitGate,
                           DeallocateQubitGate,
@@ -23,7 +24,10 @@ from projectq.ops import (AllocateQubitGate,
 
 
 class DirtyQubitMapper(BasicEngine):
-    def __init__(self, verbose=False, ignoreFastForwarding=False):
+    def __init__(self,
+                 verbose=False,
+                 ignore_FastForwarding=False,
+                 cache_limit=200):
         BasicEngine.__init__(self)
 
         # List of lists, one list per active qubit. Commands (gates) acting on
@@ -34,9 +38,10 @@ class DirtyQubitMapper(BasicEngine):
         # already deallocated), the list is just [-1]
         self._cached_cmds = []  # becomes list of lists
 
-        self._ignore_FF = ignoreFastForwarding
+        self._ignore_FF = ignore_FastForwarding
         self._verbose = verbose
-        self.manualmap = -1
+        self._cache_limit = cache_limit
+        self._manualmap = -1
 
     def is_meta_tag_handler(self, tag):
         if tag == DirtyQubitTag:
@@ -109,8 +114,19 @@ class DirtyQubitMapper(BasicEngine):
         If no such qubit is found, returns None
             -prefer qubits indicated by 'with DirtyQubits'
         """
-        if self.manualmap != -1:
-            return self.manualmap
+        if self._manualmap != -1:
+            if len(self._cached_cmds) < self._manualmap:
+                raise DirtyQubitManagementError(
+                    "The manually provided target qubit has not " +
+                    "yet been allocated")
+            elif self._cached_cmds[self._manualmap] == [-1]:
+                raise DirtyQubitManagementError(
+                    "The manually provided target qubit has not " +
+                    "yet been allocated or was already deallocated")
+
+            t = self._manualmap
+            self._manualmap = -1
+            return t
 
         def check_involvement(check_ID, j, ID_set):
             """
@@ -300,6 +316,9 @@ class DirtyQubitMapper(BasicEngine):
             if isinstance(cmd_list[-1].gate, FastForwardingGate) and \
                not self._ignore_FF:
                 self._send_qubit_pipeline(ID, len(cmd_list))
+                
+            if len(cmd_list) > self._cache_limit:
+                self._send_qubit_pipeline(ID, len(cmd_list))
 
     def _cache_cmd(self, cmd):
         """
@@ -389,6 +408,22 @@ class DirtyQubitMapper(BasicEngine):
                 self.send([cmd])
         self.print_state()
         self._print("\n\n")
+        
+    def set_next_target(self, qubit):
+        """
+        Manually set the next target. The next dirty qubit that gets
+        deallocated will be mapped into the provided qubit.
+        WARNING: No involvement-check is performed. If the dirty qubit 
+        interacts with the provided target, the remapping may change the
+        behaviour of the circuit!
+        Args:
+            qubit (Qubit object): target qubit
+        """
+        assert(not isinstance(qubit, tuple))
+        if isinstance(qubit, BasicQubit):
+            self._manualmap = qubit.id
+        else:
+            self._manualmap = qubit[0].id
 
     """
     Helpers for "debugging"

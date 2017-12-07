@@ -21,7 +21,7 @@ import pytest
 from projectq import MainEngine
 from projectq.cengines import DirtyQubitMapper, DummyEngine
 from projectq.backends import ResourceCounter
-from projectq.ops import (X,
+from projectq.ops import (X, BasicGate, ControlledGate,
                           H,
                           CNOT,
                           HGate,
@@ -259,3 +259,54 @@ def test_forwarding_FastForwardingGates(dqubitmapper_testengine):
     del dqubit
 
     assert counter.max_width == 3, "Dirty qubit was remapped"
+    
+def test_manual_targetting(dqubitmapper_testengine):
+    """
+    Test that manual targetting works
+    """
+    dummy = dqubitmapper_testengine.backend
+    
+    dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
+    qubit0 = dqubitmapper_testengine.allocate_qubit()
+    qubit1 = dqubitmapper_testengine.allocate_qubit()
+
+    dqubitmapper_testengine.next_engine.set_next_target(qubit1)
+    
+    H | dqubit
+    H | qubit1
+    H | qubit1
+    H | qubit1
+    
+    del dqubit
+    
+    assert dqubitmapper_testengine.next_engine._manualmap == -1, (
+           "Target ID for was not reset")
+    assert dummy.received_commands[-1].qubits[0][0].id == 2, (
+           "Dirty qubit was not remapped to the correct target qubit")
+
+def test_cache_limit(dqubitmapper_testengine):
+    """
+    Test if the limit on the commands cached works
+    """
+    dummy = dqubitmapper_testengine.backend
+    dqubitmapper_testengine.next_engine._cache_limit = 4
+    
+    dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
+    
+    for _ in range(3):
+        H | dqubit
+        
+    assert len(dummy.received_commands) == 0, (
+           "Commands were not cached")
+    
+    H | dqubit
+    
+    assert len(dummy.received_commands) == 5, (
+           "Commands were not sent on")
+
+if __name__=='__main__':
+    test_cache_limit(dqubitmapper_testengine())
+    
+    costs = {BasicGate : 1}
+    cost = {HGate : 1, ControlledGate : 2}
+
