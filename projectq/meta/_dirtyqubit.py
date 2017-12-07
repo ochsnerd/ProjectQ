@@ -28,30 +28,6 @@ class DirtyQubitManagementError(Exception):
     pass
 
 
-# This tag could be integrated into DirtyQubitTag
-# makes checking for a DirtyQubitTag slightly more bothersome:
-# any(isinstance(tag, TargetQubitTag) for tag in cmd.tags):
-# instead of
-# DirtyQubitTag() in cmd.tags
-class TargetQubitTag(object):
-    """
-    Target meta tag to indicate where dirty qubits are preferrably mapped to
-    Gets attached to dirty allocation gates
-    """
-    def __init__(self, IDs):
-        """
-        IDs (list of ints): IDs of qubits that the dirty qubit preferably gets
-        mapped into
-        """
-        self.IDs = IDs
-
-    def __eq__(self, other):
-        return isinstance(other, TargetQubitTag)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-
 class DirtyQubitTag(object):
     """
     Dirty qubit meta tag
@@ -67,7 +43,7 @@ class DirtyQubitTag(object):
 
     def __eq__(self, other):
         # the second part of the expression gets evaluated conditionally,
-        # ie only if both objects are DirtyQubitTags their target lists are
+        # ie only if both objects are DirtyQubitTags their target sets are
         # compared
         return (isinstance(other, DirtyQubitTag) and
                 self.target_IDs == other.target_IDs)
@@ -141,7 +117,7 @@ class DirtyQubits(object):
         if isinstance(qubits, BasicQubit):
             qubits = [qubits]
         self._targets = qubits
-        #  CHECK THAT DIRTYQUBITTAG IS SUPPOERTED, POINTLESS OTHERWISE
+        #  CHECK THAT DIRTYQUBITTAG IS SUPPORTED, POINTLESS OTHERWISE
 
     def __enter__(self):
         if len(self._targets) > 0:

@@ -23,7 +23,6 @@ and the compiler in writing/producing efficient code. It includes, e.g.,
 """
 
 from ._dirtyqubit import (DirtyQubitTag,
-                          TargetQubitTag,
                           DirtyQubits,
                           DirtyQubitManagementError)
 from ._qubitplacement import QubitPlacementTag

@@ -26,7 +26,6 @@ from projectq.meta import (DirtyQubitTag,
                            DirtyQubitManagementError)
 
 
-
 @pytest.fixture
 def dqubitsection_testengine():
     #  DirtyQubitMapper in enginelist so that DirtyQubitTag is supported
@@ -54,7 +53,7 @@ def test_tags_added_dqubitsection(dqubitsection_testengine):
     with DirtyQubits(dqubitsection_testengine, qubit):
         dqubit = dqubitsection_testengine.allocate_qubit(dirty=True)
         del dqubit
-        
+
     assert any(isinstance(tag, DirtyQubitTag)
                for tag in dummy.received_commands[-1].tags), (
            "DirtyQubitTag was not added to DeallocateQubit command," +
@@ -75,20 +74,14 @@ def test_error_missing_deallocate_dqubitsection(dqubitsection_testengine):
     """
     qubit = dqubitsection_testengine.allocate_qubit()
     try:
-        with DirtyQubits(dqubitsection_testengine,qubit):
+        with DirtyQubits(dqubitsection_testengine, qubit):
             qubit2 = dqubitsection_testengine.allocate_qubit()
     except DirtyQubitManagementError:
         assert False, "Error raised on missing deallocation of clean qubit"
 
     try:
-        with DirtyQubits(dqubitsection_testengine,qubit):
+        with DirtyQubits(dqubitsection_testengine, qubit):
             dqubit = dqubitsection_testengine.allocate_qubit(dirty=True)
     except DirtyQubitManagementError:
         return
     assert False, "No error raised on missing deallocation of dirty qubit"
-
-
-if __name__ == '__main__':
-    test_error_missing_deallocate_dqubitsection(dqubitsection_testengine())
-
-
