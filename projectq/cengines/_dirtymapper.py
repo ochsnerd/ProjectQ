@@ -20,26 +20,45 @@ from projectq.ops import (AllocateQubitGate,
                           AllocateDirtyQubitGate,
                           DeallocateQubitGate,
                           FlushGate,
-                          FastForwardingGate)
+                          FastForwardingGate,
+                          NotInvertible)
+from projectq.ops._gates import *
 
+
+
+"""
+-   Cost-history as list
+-   'if ( :' no newline, but bracket & tab to indent
+-   test shor: a=2 (not random), n=15 -> 0, 1/4, 1/2, 3/4 with equal prob
+
+-   "Implement" Shor:
+    -   change ln 115 to own decomposition rule
+    -   write own add_constant in /projectq/libs/math/_constantmath.py (from paper)
+    -   write own add_constant_modN (also from paper)
+    -   use it in other funtions
+    -   write own _default_rules.py
+    
+"""
 
 class DirtyQubitMapper(BasicEngine):
     def __init__(self,
                  verbose=False,
                  ignore_FastForwarding=False,
-                 cache_limit=200):
+                 cache_limit=200,
+                 gate_costs=None):
         BasicEngine.__init__(self)
-        
+
         # information is cached in the following data-structure:
-        # a dict with qubit-ids as keys, and a list-int tuple.
-        # the list holds all cached commands acting on the qubit, while the int
-        # stores the qubit load (the lower this number, the
-        # less imbalanced the circuit becomes if operations are mapped into the
-        # qubit)
+        # a dict with qubit-ids as keys, and a list containing
+        # two lists; the first list holds all cached commands acting on
+        # the qubit, while the second stores the qubit load after the cmd on
+        # the corresponding position in the first list has been carried out 
+        # (the lower this number, the less imbalanced the circuit becomes if
+        # operations are mapped into the qubit)
         # Qubits for which the deallocate-command has been sent on are deleted
         # from the dict
         # Example:
-        # _cache == {1: ([], 10), 3:([], 2)}
+        # _cache == {1: [[], [10]], 3:[[], [2]]}
         # no commands are cached on qubit 1 and 3. Qubit 2 has not yet been
         # allocated or was already deallocated. Mapping into qubit 3 would be
         # best.
@@ -50,6 +69,16 @@ class DirtyQubitMapper(BasicEngine):
         self._cache_limit = cache_limit
         self._manualmap = -1
 
+        if gate_costs is None:
+            self._default_cost = 1
+            self._gate_costs = self._defaultcosts()
+        else:
+            try:
+                self._default_cost = gate_costs[BasicGate]
+            except KeyError:
+                self._default_cost = 1
+            self._gate_costs = gate_costs
+
     def is_meta_tag_handler(self, tag):
         if tag == DirtyQubitTag:
             return True
@@ -58,6 +87,41 @@ class DirtyQubitMapper(BasicEngine):
 
     def is_available(self, cmd):
         return True
+        
+    def _defaultcosts(self):
+        costs = dict()
+
+        costs[HGate] = self._default_cost
+        costs[XGate] = self._default_cost
+
+        return costs
+        
+    def _update_load(self, cmd):
+        if (isinstance(cmd.gate, FlushGate) or
+                isinstance(cmd.gate, AllocateQubitGate) or
+                isinstance(cmd.gate, DeallocateQubitGate)):
+            return
+
+        involved_qubit_ids = [qb.id
+                              for qreg in cmd.all_qubits
+                              for qb in qreg]
+        max_load = 0
+        for ID in involved_qubit_ids:
+            if self._cache[ID][1] > max_load:
+                max_load = self._cache[ID][1]
+        try:
+            cmd_cost = self._gate_costs[type(cmd.gate)]
+        except KeyError:
+            try:
+                cmd_cost = self._gate_costs[type(cmd.gate.get_inverse())]
+            except (KeyError, NotInvertible):
+                cmd_cost = self._default_cost
+
+        self._print("cmd_cost = " + str(cmd_cost))
+
+        max_load += cmd_cost
+        for ID in involved_qubit_ids:
+            self._cache[ID][1] = max_load
 
     def _send_qubit_pipeline(self, snd_ID, n):
         """
@@ -95,7 +159,7 @@ class DirtyQubitMapper(BasicEngine):
                     # all previous commands on the other qubit were sent on,
                     # we delete the one we're inspecting now in the other list
                     # to avoid sending it multiple times
-                    self._cache[ID][0][:] = self._cache[ID][0][1:]
+                    self._cache[ID][0] = self._cache[ID][0][1:]
                 except KeyError:
                     print("Invalid qubit pipeline encountered (in the" +
                           " process of shutting down?).")
@@ -123,7 +187,7 @@ class DirtyQubitMapper(BasicEngine):
         """
         if self._manualmap != -1:
             t = self._manualmap
-            if not t in self._cache:
+            if t not in self._cache:
                 raise DirtyQubitManagementError(
                     "The manually provided target qubit has not " +
                     "yet been allocated or was already deallocated")
@@ -186,6 +250,19 @@ class DirtyQubitMapper(BasicEngine):
                              if c == cmd]
                 id_pos_pairs.append((other_ID, ident_idx[n_identical_to_skip]))
             return id_pos_pairs
+            
+        def get_lowest_load_id(possible_ids):
+            lowest_load = None
+            corresponding_id = -1
+            for ID in possible_ids:
+                load = self._cache[ID][1]
+                if lowest_load is None:
+                    lowest_load = load
+                    corresponding_id = ID
+                elif lowest_load > load:
+                    lowest_load = load
+                    corresponding_id = ID
+            return corresponding_id
 
         preferred_qubits = set()
         # check if we have preferred targets for this dirty qubit
@@ -203,7 +280,7 @@ class DirtyQubitMapper(BasicEngine):
                 self._print("Found preferred, possible qubits: "
                             + str(preferred_qubits))
                 self._print("Remapping into " + str(list(preferred_qubits)[0]))
-                return list(preferred_qubits)[0]
+                return get_lowest_load_id(preferred_qubits)
 
         possible_qubits = {ID for ID in self._cache}
         possible_qubits.remove(rmp_ID)
@@ -220,7 +297,7 @@ class DirtyQubitMapper(BasicEngine):
 
         self._print("Remapping into " + str(list(possible_qubits)[0]))
 
-        return list(possible_qubits)[0]
+        return get_lowest_load_id(possible_qubits)
 
     def _remap_dqubit(self, rmp_ID):
         """
@@ -250,7 +327,7 @@ class DirtyQubitMapper(BasicEngine):
             return rmp_ID, False
 
         # remove allocate and deallocate command
-        self._cache[rmp_ID][0][:] = self._cache[rmp_ID][0][1:-1]
+        self._cache[rmp_ID][0] = self._cache[rmp_ID][0][1:-1]
 
         # Change ID of qubits of cached commands
         for cmd in self._cache[rmp_ID][0]:
@@ -268,7 +345,7 @@ class DirtyQubitMapper(BasicEngine):
         # append commands acting on qubit rmp_ID to list of qubit new_ID
         if not self._cache[new_ID][0]:
             self._print("Map to not involved")
-            self._cache[new_ID][0][:] = self._cache[rmp_ID][0]
+            self._cache[new_ID][0] = self._cache[rmp_ID][0]
             del self._cache[rmp_ID]
             wait = False
         else:
@@ -277,9 +354,9 @@ class DirtyQubitMapper(BasicEngine):
                           DeallocateQubitGate):
                 # The qubit we map to is already deallocated, but still cached
                 # sneak in the cmds of the dqubit before the deallocation
-                self._cache[new_ID][0][:] = (self._cache[new_ID][0][:-1]
-                                             + self._cache[rmp_ID][0]
-                                             + [self._cache[new_ID][0][-1]])
+                self._cache[new_ID][0] = (self._cache[new_ID][0][:-1]
+                                          + self._cache[rmp_ID][0]
+                                          + [self._cache[new_ID][0][-1]])
             else:
                 self._cache[new_ID][0].extend(self._cache[rmp_ID][0])
             del self._cache[rmp_ID]
@@ -315,7 +392,7 @@ class DirtyQubitMapper(BasicEngine):
         # condition evaluates to False every iteration of one for-loop, the
         # else-statement is evaluated and we break out of the while-loop.
         while True:
-            for ID, (cmd_list, _) in self._cache.items():
+            for ID, [cmd_list, _] in self._cache.items():
                 if not cmd_list:
                     # no cached cmds - we don't have to check anything
                     continue
@@ -334,17 +411,17 @@ class DirtyQubitMapper(BasicEngine):
                     if not wait:
                         n = len(self._cache[mappedinto_ID][0])
                         self._send_qubit_pipeline(mappedinto_ID, n)
-                    
+
                     # by remapping the dirty qubit, we changed the size of the
-                    # dict we were looping though - we have to  stop and restart
+                    # dict we were looping though - we have to stop and restart
                     break
                 if not cmd_list:
                     # dirty qubit was remapped - no more cached cmds acting
                     # on this qubit
                     continue
 
-                if isinstance(cmd_list[-1].gate, FastForwardingGate) and \
-                   not self._ignore_FF:
+                if (isinstance(cmd_list[-1].gate, FastForwardingGate) and
+                        not self._ignore_FF):
                     self._send_qubit_pipeline(ID, len(cmd_list))
                     break
 
@@ -377,8 +454,8 @@ class DirtyQubitMapper(BasicEngine):
         """
         Checks if cmd is allocation of a dirty qubit
         """
-        if any(isinstance(tag, DirtyQubitTag) for tag in cmd.tags) \
-           and isinstance(cmd.gate, AllocateQubitGate):
+        if (any(isinstance(tag, DirtyQubitTag) for tag in cmd.tags)
+                and isinstance(cmd.gate, AllocateQubitGate)):
             return True
         return False
 
@@ -386,8 +463,8 @@ class DirtyQubitMapper(BasicEngine):
         """
         Checks if cmd is deallocation of a dirty qubit
         """
-        if any(isinstance(tag, DirtyQubitTag) for tag in cmd.tags) \
-           and isinstance(cmd.gate, DeallocateQubitGate):
+        if (any(isinstance(tag, DirtyQubitTag) for tag in cmd.tags)
+                and isinstance(cmd.gate, DeallocateQubitGate)):
             return True
         return False
 
@@ -405,9 +482,9 @@ class DirtyQubitMapper(BasicEngine):
                 new_ID = cmd.qubits[0][0].id
                 self._print("Adding qubit " + str(new_ID) + " to cached_cmds")
                 self._print(len(self._cache))
-                self._cache[new_ID] = [], 0
-                
-            # update qubit load
+                self._cache[new_ID] = [[], 0]
+
+            self._update_load(cmd)
 
             if isinstance(cmd.gate, FlushGate):
                 # received flush-gate - send on all cached cmds
@@ -429,20 +506,22 @@ class DirtyQubitMapper(BasicEngine):
                     self._print("Invalidating qubit ID")
                     dealloc_ID = cmd.qubits[0][0].id
                     try:
-                        cmds, _ = self._cache.pop(dealloc_ID)
+                        [cmds, _] = self._cache.pop(dealloc_ID)
                     except KeyError:
                         raise DirtyQubitManagementError(
                             "A qubit which was not allocated was deallocated")
-                    assert not cmds, "Non-empty cache got deleted"
+                    if cmds:
+                        raise DirtyQubitManagementError(
+                            "A non-empty cache got deleted")
                 self.send([cmd])
         self.print_state()
         self._print("\n\n")
-        
+
     def set_next_target(self, qubit):
         """
         Manually set the next target. The next dirty qubit that gets
         deallocated will be mapped into the provided qubit.
-        WARNING: No involvement-check is performed. If the dirty qubit 
+        WARNING: No involvement-check is performed. If the dirty qubit
         interacts with the provided target, the remapping may change the
         behaviour of the circuit!
         Args:
@@ -466,7 +545,7 @@ class DirtyQubitMapper(BasicEngine):
             return
         print("----------------------------------")
         print("State of dirtymapper:")
-        for qubit_id, (cmds, cost) in self._cache.items():
+        for qubit_id, [cmds, cost] in self._cache.items():
             print("  Qubit " + str(qubit_id))
             print("    Load: " + str(cost))
             print("    Cached Commands:")

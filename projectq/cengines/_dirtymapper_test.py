@@ -21,10 +21,13 @@ import pytest
 from projectq import MainEngine
 from projectq.cengines import DirtyQubitMapper, DummyEngine
 from projectq.backends import ResourceCounter
-from projectq.ops import (X, BasicGate, ControlledGate,
+from projectq.ops import (X,
+                          XGate,
                           H,
-                          CNOT,
                           HGate,
+                          BasicGate,
+                          ControlledGate,
+                          CNOT,
                           Toffoli,
                           AllocateQubitGate,
                           DeallocateQubitGate)
@@ -34,7 +37,7 @@ from projectq.meta import DirtyQubits
 @pytest.fixture
 def dqubitmapper_testengine():
     return MainEngine(DummyEngine(save_commands=True),
-                      [DirtyQubitMapper(), ResourceCounter()])
+                      [DirtyQubitMapper(verbose=False), ResourceCounter()])
 
 
 def test_empty_dqubit(dqubitmapper_testengine):
@@ -205,8 +208,8 @@ def test_targetting(dqubitmapper_testengine):
     counter = dqubitmapper_testengine.next_engine.next_engine
 
     qureg = dqubitmapper_testengine.allocate_qureg(2)
-
-    # ALSO TEST WITH OPTIMIZED REMAPPER
+    
+    H | qureg[0]
     with DirtyQubits(dqubitmapper_testengine, [qureg[1]]):
         dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
         H | dqubit
@@ -216,7 +219,7 @@ def test_targetting(dqubitmapper_testengine):
            "dqubit was not remapped into target")
 
 
-def test_ignoring_FastForwardingGates(dqubitmapper_testengine):
+def test_caching_FastForwardingGates(dqubitmapper_testengine):
     """
     Test that FastForwardingGates are ignored if flag is set, ie. cached
     """
@@ -271,14 +274,14 @@ def test_manual_targetting(dqubitmapper_testengine):
     qubit1 = dqubitmapper_testengine.allocate_qubit()
 
     dqubitmapper_testengine.next_engine.set_next_target(qubit1)
-    
+
     H | dqubit
     H | qubit1
     H | qubit1
     H | qubit1
-    
+
     del dqubit
-    
+
     assert dqubitmapper_testengine.next_engine._manualmap == -1, (
            "Target ID for was not reset")
     assert dummy.received_commands[-1].qubits[0][0].id == 2, (
@@ -304,9 +307,34 @@ def test_cache_limit(dqubitmapper_testengine):
     assert len(dummy.received_commands) == 5, (
            "Commands were not sent on")
 
-if __name__=='__main__':
-    test_cache_limit(dqubitmapper_testengine())
+def test_costdict_construction():
+    """
+    Test if the cost-dict is set correctly
+    """
+    c1 = {BasicGate : 42}
+    t1 = DirtyQubitMapper(gate_costs=c1)
+    assert t1._default_cost == 42, "Default cost was not set correctly"
     
-    costs = {BasicGate : 1}
-    cost = {HGate : 1, ControlledGate : 2}
+    c2 = {HGate : 42, XGate : 99}
+    t2 = DirtyQubitMapper(gate_costs=c2)
+    assert t2._gate_costs == c2, "Cost dict was not set correctly"
+    
+def test_load_balanced_remapping(dqubitmapper_testengine):
+    """
+    Test if dqubit gets remapped into the qubit with the lowest load
+    """
+    dummy = dqubitmapper_testengine.backend
+    
+    dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
+    qureg = dqubitmapper_testengine.allocate_qureg(2)
 
+    H | qureg[0]
+    H | dqubit
+
+    del dqubit
+    
+    assert dummy.received_commands[-1].qubits[0][0].id == 2, (
+           "Qubit was not remapped into lowest load qubit")
+
+if __name__=='__main__':
+    test_targetting(dqubitmapper_testengine())
