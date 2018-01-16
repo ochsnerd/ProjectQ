@@ -36,7 +36,7 @@ class DirtyQubitTag(object):
     """
     def __init__(self, targets=[]):
         """
-        targets (list of ints): IDs of qubits that the dirty qubit
+        targets (list<int>): IDs of qubits that the dirty qubit
         preferably gets mapped into
         """
         self.target_IDs = set(targets)
@@ -92,8 +92,8 @@ class DirtyQubits(object):
 
             with DirtyQubits(eng, targets):
                 dirty_qubit = eng.allocate_qubit(dirty = True)
-                do_stuff()
-                eng.deallocate_qubit(dirty_qubit[0])
+                ...
+                del dirty_qubit
                 # dirty_qubit will be mapped into targets (if possible)
     """
 
@@ -117,7 +117,6 @@ class DirtyQubits(object):
         if isinstance(qubits, BasicQubit):
             qubits = [qubits]
         self._targets = qubits
-        #  CHECK THAT DIRTYQUBITTAG IS SUPPORTED, POINTLESS OTHERWISE
 
     def __enter__(self):
         if len(self._targets) > 0:

@@ -208,7 +208,7 @@ def test_targetting(dqubitmapper_testengine):
     counter = dqubitmapper_testengine.next_engine.next_engine
 
     qureg = dqubitmapper_testengine.allocate_qureg(2)
-    
+
     H | qureg[0]
     with DirtyQubits(dqubitmapper_testengine, [qureg[1]]):
         dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
@@ -262,13 +262,14 @@ def test_forwarding_FastForwardingGates(dqubitmapper_testengine):
     del dqubit
 
     assert counter.max_width == 3, "Dirty qubit was remapped"
-    
+
+
 def test_manual_targetting(dqubitmapper_testengine):
     """
     Test that manual targetting works
     """
     dummy = dqubitmapper_testengine.backend
-    
+
     dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
     qubit0 = dqubitmapper_testengine.allocate_qubit()
     qubit1 = dqubitmapper_testengine.allocate_qubit()
@@ -287,44 +288,47 @@ def test_manual_targetting(dqubitmapper_testengine):
     assert dummy.received_commands[-1].qubits[0][0].id == 2, (
            "Dirty qubit was not remapped to the correct target qubit")
 
+
 def test_cache_limit(dqubitmapper_testengine):
     """
     Test if the limit on the commands cached works
     """
     dummy = dqubitmapper_testengine.backend
     dqubitmapper_testengine.next_engine._cache_limit = 4
-    
+
     dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
-    
+
     for _ in range(3):
         H | dqubit
-        
+
     assert len(dummy.received_commands) == 0, (
            "Commands were not cached")
-    
+
     H | dqubit
-    
+
     assert len(dummy.received_commands) == 5, (
            "Commands were not sent on")
+
 
 def test_costdict_construction():
     """
     Test if the cost-dict is set correctly
     """
-    c1 = {BasicGate : 42}
+    c1 = {BasicGate: 42}
     t1 = DirtyQubitMapper(gate_costs=c1)
     assert t1._default_cost == 42, "Default cost was not set correctly"
-    
-    c2 = {HGate : 42, XGate : 99}
+
+    c2 = {HGate: 42, XGate: 99}
     t2 = DirtyQubitMapper(gate_costs=c2)
     assert t2._gate_costs == c2, "Cost dict was not set correctly"
-    
-def test_load_balanced_remapping(dqubitmapper_testengine):
+
+
+def test_load_balanced_remapping1(dqubitmapper_testengine):
     """
     Test if dqubit gets remapped into the qubit with the lowest load
     """
     dummy = dqubitmapper_testengine.backend
-    
+
     dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
     qureg = dqubitmapper_testengine.allocate_qureg(2)
 
@@ -332,9 +336,73 @@ def test_load_balanced_remapping(dqubitmapper_testengine):
     H | dqubit
 
     del dqubit
-    
+
     assert dummy.received_commands[-1].qubits[0][0].id == 2, (
            "Qubit was not remapped into lowest load qubit")
 
-if __name__=='__main__':
-    test_targetting(dqubitmapper_testengine())
+
+def test_load_balanced_remapping2(dqubitmapper_testengine):
+    """
+    Test if load gets updated correctly after remap, so that the second remap
+    works correctly. Case where load(target) < load(dqubit)
+    """
+
+    dummy = dqubitmapper_testengine.backend
+    counter = dqubitmapper_testengine.next_engine.next_engine
+
+    dqubit1 = dqubitmapper_testengine.allocate_qubit(dirty=True)
+    dqubit2 = dqubitmapper_testengine.allocate_qubit(dirty=True)
+    qureg = dqubitmapper_testengine.allocate_qureg(3)
+
+    CNOT | (dqubit1, qureg[2])
+    CNOT | (dqubit1, qureg[2])
+    CNOT | (dqubit2, qureg[2])
+    CNOT | (dqubit2, qureg[2])
+
+    H | qureg[0]
+    H | qureg[0]
+    H | qureg[1]
+
+    del dqubit1
+    del dqubit2
+
+    assert counter.max_width == 3, "dqubits were not remapped"
+
+    assert dummy.received_commands[-3].control_qubits[0].id == 3, (
+           "dqubit1 was not remapped to optimal dqubit")
+    assert dummy.received_commands[-1].control_qubits[0].id == 2, (
+           "dqubit2 was not remapped to optimal dqubit")
+
+
+def test_load_balanced_remapping3(dqubitmapper_testengine):
+    """
+    Test if load gets updated correctly after remap, so that the second remap
+    works correctly Case where load(target) > load(dqubit)
+    """
+
+    dummy = dqubitmapper_testengine.backend
+    counter = dqubitmapper_testengine.next_engine.next_engine
+
+    dqubit1 = dqubitmapper_testengine.allocate_qubit(dirty=True)
+    dqubit2 = dqubitmapper_testengine.allocate_qubit(dirty=True)
+    qureg = dqubitmapper_testengine.allocate_qureg(3)
+
+    CNOT | (dqubit1, qureg[2])
+    CNOT | (dqubit1, qureg[2])
+    CNOT | (dqubit2, qureg[2])
+    CNOT | (dqubit2, qureg[2])
+
+    for _ in range(4):
+        H | qureg[0]
+    for _ in range(3):
+        H | qureg[1]
+
+    del dqubit1
+    del dqubit2
+
+    assert counter.max_width == 3, "dqubits were not remapped"
+
+    assert dummy.received_commands[-3].control_qubits[0].id == 3, (
+           "dqubit1 was not remapped to optimal dqubit")
+    assert dummy.received_commands[-1].control_qubits[0].id == 2, (
+           "dqubit2 was not remapped to optimal dqubit")
