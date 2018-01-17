@@ -40,9 +40,6 @@ from projectq.ops._gates import *
     -   write own _default_rules.py
 
 -   remove verbose
-
-DOING: Write test for correct load updating after dirty qubit remapping
-
 """
 
 
@@ -374,7 +371,12 @@ class DirtyQubitMapper(BasicEngine):
             lowest_load = None
             corresponding_id = -1
             for ID in possible_ids:
-                load = self._cache[ID][1][-1]
+                try:
+                    load = self._cache[ID][1][-1]
+                except KeyError:
+                    print(possible_ids)
+                    self.print_state(override=True)
+                    raise KeyError()
                 if lowest_load is None:
                     lowest_load = load
                     corresponding_id = ID
@@ -387,7 +389,10 @@ class DirtyQubitMapper(BasicEngine):
         # check if we have preferred targets for this dirty qubit
         for tag in self._cache[rmp_ID][0][0].tags:
             if isinstance(tag, DirtyQubitTag):
-                preferred_qubits.update(tag.target_IDs)
+                # maybe there are IDs in target_IDs that are not active
+                preferred_qubits = {ID for ID in tag.target_IDs
+                                       if ID in self._cache}
+                #preferred_qubits.update(tag.target_IDs)
 
         if preferred_qubits:
             # we found preferred targets
@@ -770,8 +775,8 @@ class DirtyQubitMapper(BasicEngine):
         if self._verbose:
             print(message)
 
-    def print_state(self):
-        if not self._verbose:
+    def print_state(self, override=False):
+        if not self._verbose and not override:
             return
         print("----------------------------------")
         print("State of dirtymapper:")
