@@ -126,6 +126,8 @@ class BasicEngine(object):
 
         Args:
             n (int): Number of qubits to allocate
+            dirty (bool): If True, indicates that the allocated qubit may be
+                dirty (i.e., in an arbitrary initial state).
         Returns:
             Qureg of length n, a list of n newly allocated qubits.
         """
