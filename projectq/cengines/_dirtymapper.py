@@ -47,11 +47,11 @@ class DirtyQubitMapper(BasicEngine):
     """
     DirtyQubitMapper is a compiler engine that attempts to remap dirty qubits
     into other qubits to reduce the width of the circuit.
-    
+
     A dirty qubit is a qubit that:\n
     - Can be allocated in a general state\n
     - Is in exactly the same state when it gets allocated and deallocated
-    
+
     Both of these conditions can not be feasibly checked by the engine, so
     the user is responsible to ensure they are met. If a qubit meets the
     conditions, it can be flagged as dirty when it is allocated.
@@ -60,7 +60,7 @@ class DirtyQubitMapper(BasicEngine):
             .. code-block:: python
 
                     eng.allocate_qubit(dirty=True)
-    
+
     The DirtyQubitMapper then caches all gates acting on that qubit as well
     as all gates acting on qubits influenced by that qubit (for example gates
     on a qubit after a CNOT controlled on the dirty qubit acted on it).
@@ -72,7 +72,7 @@ class DirtyQubitMapper(BasicEngine):
     cached or sent on. Not caching them means that some dirty qubits will
     not be remapped, while caching them can lead to suboptimal results of
     other compiler engines.
-    
+
     After the deallocation gate on the dirty qubit is received, the
     DirtyQubitMapper will search for qubits that are not influenced by the
     dirty qubit and remap all gates acting on the dirty qubit into that qubit
@@ -82,9 +82,9 @@ class DirtyQubitMapper(BasicEngine):
     The DirtyQubitMapper also estimates the load on each qubit in order to be
     able to choose a good target for remapping (avoid "serialization" by always
     mapping into to the same qubit).
-    
+
     To this end, a dict of {GateClass: Cost} can be given,
-    which indicates the cost of perforimg each gate (this is dependent on 
+    which indicates the cost of perforimg each gate (this is dependent on
     which infrastructure the circuit is performed).
     """
     def __init__(self,
@@ -94,7 +94,7 @@ class DirtyQubitMapper(BasicEngine):
                  gate_costs=None):
         """
         Initialize a DirtyQubitMapper object.
-        
+
         Args:
             ignore_FastForwarding (bool): Controls if FastForwadingGates are
                 cached, False means they are not cached
@@ -391,8 +391,7 @@ class DirtyQubitMapper(BasicEngine):
             if isinstance(tag, DirtyQubitTag):
                 # maybe there are IDs in target_IDs that are not active
                 preferred_qubits = {ID for ID in tag.target_IDs
-                                       if ID in self._cache}
-                #preferred_qubits.update(tag.target_IDs)
+                                    if ID in self._cache}
 
         if preferred_qubits:
             # we found preferred targets
@@ -569,7 +568,8 @@ class DirtyQubitMapper(BasicEngine):
         self._print("After remapping dqubit")
         self.print_state()
 
-        return new_ID, wait
+        # return new_ID, wait
+        return new_ID, True
 
     def _check_and_send(self):
         """
@@ -601,10 +601,6 @@ class DirtyQubitMapper(BasicEngine):
                 assert (len(cmd_list) == len(cost_list) or
                         not cmd_list and len(cost_list) == 1), (
                         "Cost-history and command-cache don't match")
-                if not (len(cmd_list) == len(cost_list) or
-                        not cmd_list and len(cost_list) == 1):
-                    self.print_state()
-                    assert False, "YO"
 
                 if not cmd_list:
                     # no cached cmds - we don't have to check anything
@@ -754,7 +750,7 @@ class DirtyQubitMapper(BasicEngine):
         """
         Manually set the next target. The next dirty qubit that gets
         deallocated will be mapped into the provided qubit.
-        
+
         Warning:
             No involvement-check is performed. If the dirty qubit
             interacts with the provided target, the remapping will change the
