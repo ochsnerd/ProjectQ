@@ -72,11 +72,12 @@ def test_noninteracting_dqubit(dqubitmapper_testengine):
            "Commands on dqubit aren't cached")
 
     del dqubit
+    del qubit
 
     # H^2 was mapped into qubit
-    assert len(dummy.received_commands) == 4, "Gates were not sent on"
+    assert len(dummy.received_commands) == 5, "Gates were not sent on"
     assert all(isinstance(cmd.gate, HGate)
-               for cmd in dummy.received_commands[1:]), (
+               for cmd in dummy.received_commands[1:-1]), (
                "Gates are not Hadamard Gates")
     assert all(qb.id == 1
                for cmd in dummy.received_commands
@@ -121,13 +122,15 @@ def test_interacting_dqubit_remap(dqubitmapper_testengine):
     CNOT | (qubit1, dqubit)
 
     del dqubit
+    del qubit1
+    del qubit2
 
     assert counter.max_width == 2, "dqubit was not remapped"
-    # Question: Why here qubits[][]
-    assert dummy.received_commands[-1].qubits[0][0].id == 2, (
+
+    assert dummy.received_commands[-3].qubits[0][0].id == 2, (
            "CNOT does not act on qubit2")
-    # and here control_qubits[]
-    assert dummy.received_commands[-1].control_qubits[0].id == 1, (
+
+    assert dummy.received_commands[-3].control_qubits[0].id == 1, (
            "CNOT is not controlled on qubit1")
 
 
@@ -146,19 +149,20 @@ def test_toffoli_remap(dqubitmapper_testengine):
     Toffoli | (qureg[:2], dqubit)
 
     del dqubit
+    del qureg
 
-    assert dummy.received_commands[-2].qubits[0][0].id == 1, (
+    assert dummy.received_commands[-5].qubits[0][0].id == 1, (
            "Toffoli does not act on qureg[1]")
-    assert dummy.received_commands[-2].control_qubits[0].id == 0, (
+    assert dummy.received_commands[-5].control_qubits[0].id == 0, (
            "Toffoli not controlled on qureg[0]")
-    assert dummy.received_commands[-2].control_qubits[1].id == 2, (
+    assert dummy.received_commands[-5].control_qubits[1].id == 2, (
            "Toffoli not controlled on qureg[2]")
 
-    assert dummy.received_commands[-1].qubits[0][0].id == 2, (
+    assert dummy.received_commands[-4].qubits[0][0].id == 2, (
            "Toffoli does not act on qureg[2]")
-    assert dummy.received_commands[-1].control_qubits[0].id == 0, (
+    assert dummy.received_commands[-4].control_qubits[0].id == 0, (
            "Toffoli not controlled on qureg[0]")
-    assert dummy.received_commands[-1].control_qubits[1].id == 1, (
+    assert dummy.received_commands[-4].control_qubits[1].id == 1, (
            "Toffoli not controlled on qureg[1]")
 
 
@@ -215,7 +219,9 @@ def test_targetting(dqubitmapper_testengine):
         H | dqubit
         del dqubit
 
-    assert dummy.received_commands[-1].qubits[0][0].id == 1, (
+    del qureg
+
+    assert dummy.received_commands[-3].qubits[0][0].id == 1, (
            "dqubit was not remapped into target")
 
 
@@ -336,8 +342,9 @@ def test_load_balanced_remapping1(dqubitmapper_testengine):
     H | dqubit
 
     del dqubit
+    del qureg
 
-    assert dummy.received_commands[-1].qubits[0][0].id == 2, (
+    assert dummy.received_commands[-3].qubits[0][0].id == 2, (
            "Qubit was not remapped into lowest load qubit")
 
 
@@ -365,12 +372,13 @@ def test_load_balanced_remapping2(dqubitmapper_testengine):
 
     del dqubit1
     del dqubit2
+    del qureg
 
     assert counter.max_width == 3, "dqubits were not remapped"
 
-    assert dummy.received_commands[-3].control_qubits[0].id == 3, (
+    assert dummy.received_commands[-6].control_qubits[0].id == 3, (
            "dqubit1 was not remapped to optimal dqubit")
-    assert dummy.received_commands[-1].control_qubits[0].id == 2, (
+    assert dummy.received_commands[-4].control_qubits[0].id == 2, (
            "dqubit2 was not remapped to optimal dqubit")
 
 
@@ -399,10 +407,11 @@ def test_load_balanced_remapping3(dqubitmapper_testengine):
 
     del dqubit1
     del dqubit2
+    del qureg
 
     assert counter.max_width == 3, "dqubits were not remapped"
 
-    assert dummy.received_commands[-3].control_qubits[0].id == 3, (
+    assert dummy.received_commands[-6].control_qubits[0].id == 3, (
            "dqubit1 was not remapped to optimal dqubit")
-    assert dummy.received_commands[-1].control_qubits[0].id == 2, (
+    assert dummy.received_commands[-4].control_qubits[0].id == 2, (
            "dqubit2 was not remapped to optimal dqubit")
