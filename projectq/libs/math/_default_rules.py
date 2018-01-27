@@ -25,7 +25,7 @@ from ._gates import (AddConstant,
                      AddConstantModN,
                      SubConstantModN,
                      MultiplyByConstantModN)
-from ._constantmath import (add_constant,
+from ._dirtyconstantmath import (add_constant,
                             add_constant_modN,
                             mul_by_constant_modN)
 

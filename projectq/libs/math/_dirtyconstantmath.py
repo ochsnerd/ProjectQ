@@ -116,10 +116,8 @@ def add_constant(eng, c, quint, anc=None):
 
     controlled_increment(eng, x_h, anc, x_l)
 
-    #~ with Control(eng, anc):
-        #~ Tensor(X) | x_h
-
-    CNOT | (anc, x_h[0])
+    with Control(eng, anc):
+        Tensor(X) | x_h
 
     carry(eng, x_l, c_l, anc, x_h)
 
@@ -127,10 +125,8 @@ def add_constant(eng, c, quint, anc=None):
 
     carry(eng, x_l, c_l, anc, x_h)
 
-    CNOT | (anc, x_h[0])
-
-    #~ with Control(eng, anc):
-        #~ Tensor(X) | x_h
+    with Control(eng, anc):
+        Tensor(X) | x_h
 
     add_constant(eng, c_l, x_l, anc=anc)
 
