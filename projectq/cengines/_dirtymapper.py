@@ -821,6 +821,7 @@ class QubitHistory:
         self.load_uncached = 0
 
     def check_invariants(self, ID=None):
+        from projectq.ops import SwapGate
         try:
             assert len(self.cmds) == len(self.loads), (
                 "# of commands cached doesn't fit # of loads")
@@ -830,6 +831,8 @@ class QubitHistory:
                 "# of commands cached doesn't fit # of involved_id-lists")
 
             for cmd, pos_list in zip(self.cmds, self.abs_positions):
+                if isinstance(cmd.gate, SwapGate):
+                    continue
                 assert (len(cmd.all_qubits[0]) +
                         len(cmd.all_qubits[1]) ==
                         len(pos_list)), (
@@ -837,6 +840,8 @@ class QubitHistory:
                     "abs_positions-list")
 
             for cmd, inv_list in zip(self.cmds, self.inv_ids):
+                if isinstance(cmd.gate, SwapGate):
+                    continue
                 assert (len(cmd.all_qubits[0]) +
                         len(cmd.all_qubits[1]) ==
                         len(inv_list)), (
@@ -850,6 +855,10 @@ class QubitHistory:
             if not ID is None:
                 print("ID: " + str(ID))
             self.print_state(ID)
+            print("aq_0: " + str(self.cmds[5].all_qubits[0]))
+            print("aq_1: " + str(self.cmds[5].all_qubits[1]))
+            print("q: " + str(self.cmds[5].qubits))
+            print("cq: " + str(self.cmds[5].control_qubits))
             raise
 
     def sent_cmd(self):
@@ -959,7 +968,10 @@ class QubitHistory:
         print("######################################")
         print("Cache of qubit " + str(ID))
         print("Sent: " + str(self.n_cmds_sent))
-        print("cmds: " + str(len(self.cmds)))
+        print("cmds: ", end="")
+        for cmd in self.cmds:
+            print(cmd, end=", ")
+        print("")
         print("loads: " + str(self.loads))
         print("inv_ids: " + str(self.inv_ids))
         print("pos: " + str(self.abs_positions))
