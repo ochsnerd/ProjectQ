@@ -151,30 +151,27 @@ def carry(eng, quint, c, g, anc):
             CNOT | (quint[0], g)
         return
 
-    with DirtyQubits(eng, anc):
-        ancilla = eng.allocate_qureg(n-1, dirty=True)
+    ancilla = anc[:n-1]
 
-        CNOT | (ancilla[-1], g)
+    CNOT | (ancilla[-1], g)
 
-        with Compute(eng):
-            for i in range(1,n-1):
-                if (c >> (n-i)) & 1:
-                    CNOT | (quint[-i], ancilla[-i])
-                    X | quint[-i]
-                Toffoli | (ancilla[-(i+1)], quint[-i], ancilla[-i])
-            if (c >> 1) & 1:
-                CNOT | (quint[1],ancilla[0])
-                X | quint[1]
-            if c & 1:
-                Toffoli | (quint[0], quint[1], ancilla[0])
-            for i in range(n-2):
-                Toffoli | (ancilla[i], quint[i+2], ancilla[i+1])
+    with Compute(eng):
+        for i in range(1,n-1):
+            if (c >> (n-i)) & 1:
+                CNOT | (quint[-i], ancilla[-i])
+                X | quint[-i]
+            Toffoli | (ancilla[-(i+1)], quint[-i], ancilla[-i])
+        if (c >> 1) & 1:
+            CNOT | (quint[1],ancilla[0])
+            X | quint[1]
+        if c & 1:
+            Toffoli | (quint[0], quint[1], ancilla[0])
+        for i in range(n-2):
+            Toffoli | (ancilla[i], quint[i+2], ancilla[i+1])
 
-        CNOT | (ancilla[-1], g)
+    CNOT | (ancilla[-1], g)
 
-        Uncompute(eng)
-
-        del ancilla
+    Uncompute(eng)
 
 
 def controlled_increment(eng, quint, control, anc):
@@ -248,33 +245,29 @@ def increment(eng, quint, anc):
 
     assert n <= len(anc), "Need an ancilla qubit for each bit"
 
-    with DirtyQubits(eng, anc):
-        g = eng.allocate_qureg(n, dirty=True)
+    # Cancel garbage state of the carry bit
+    for qb in quint[:-1]:
+        CNOT | (anc[0], qb)
 
-        # Cancel garbage state of the carry bit
-        for qb in quint[:-1]:
-            CNOT | (g[0], qb)
+    # Cancel garbage of the other dirty qubits
+    Tensor(X) | anc[1:]
 
-        # Cancel garbage of the other dirty qubits
-        Tensor(X) | g[1:]
+    # "Special" handling of highest bit
+    X | quint[-1]
 
-        # "Special" handling of highest bit
-        X | quint[-1]
+    # "subtract"
+    subtract(quint, anc)
 
-        # "subtract"
-        subtract(quint, g)
+    # Cancel garbage of the other dirty qubits
+    Tensor(X) | anc[1:]
 
-        # Cancel garbage of the other dirty qubits
-        Tensor(X) | g[1:]
+    # "subtract"
+    subtract(quint, anc)
 
-        # "subtract"
-        subtract(quint, g)
+    # Cancel garbage state of the carry bit
+    for qb in quint[:-1]:
+        CNOT | (anc[0], qb)
 
-        # Cancel garbage state of the carry bit
-        for qb in quint[:-1]:
-            CNOT | (g[0], qb)
-
-        del g
 
 # Modular multiplication by modular addition & shift, followed by uncompute
 # from https://arxiv.org/abs/quant-ph/0205095
@@ -291,7 +284,7 @@ def mul_by_constant_modN(eng, c, N, quint_in):
     assert(gcd(c, N) == 1)
 
     n = len(quint_in)
-    quint_out = eng.allocate_qureg(n + 1)
+    quint_out = eng.allocate_qureg(n)
 
     for i in range(n):
         with Control(eng, quint_in[i]):
