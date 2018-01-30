@@ -79,7 +79,7 @@ class DirtyQubitMapper(BasicEngine):
     which indicates the cost of perforimg each gate (this is dependent on
     which infrastructure the circuit is performed).
     """
-    def __init__(self, verbose=False, cache_limit=200, gate_costs=None):
+    def __init__(self, verbose=False, cache_limit=10000, gate_costs=None):
         """
         Initialize a DirtyQubitMapper object.
 
@@ -272,10 +272,10 @@ class DirtyQubitMapper(BasicEngine):
                 (set(int)) uninv_IDs, but all IDs of involved qubits are removed
             """
             # "Manual" control of recursion depth with info-dump if exceeded
-            if depth > 250:
-                print(uninv_IDs)
-                print(checked_IDs)
-                raise DirtyQubitManagementError
+            #~ if depth > 250:
+                #~ print(uninv_IDs)
+                #~ print(checked_IDs)
+                #~ raise DirtyQubitManagementError
             if not uninv_IDs:
                 # There are no uninvolved qubits - don't have to check further
                 return uninv_IDs
