@@ -11,11 +11,6 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-
-# David Ochsner
-# 2017-11-01
-# ochsnerd@student.ethz.ch
-
 import pytest
 
 from projectq import MainEngine
@@ -31,13 +26,13 @@ from projectq.ops import (X,
                           Toffoli,
                           AllocateQubitGate,
                           DeallocateQubitGate)
-from projectq.meta import DirtyQubits
+from projectq.meta import CarrierQubits
 
 
 @pytest.fixture
 def dqubitmapper_testengine():
     return MainEngine(DummyEngine(save_commands=True),
-                      [DirtyQubitMapper(verbose=False), ResourceCounter()])
+                      [DirtyQubitMapper(), ResourceCounter()])
 
 
 def test_empty_dqubit(dqubitmapper_testengine):
@@ -208,7 +203,8 @@ def test_dont_remap_partially_cached(dqubitmapper_testengine):
 
 def test_targetting(dqubitmapper_testengine):
     """
-    Test that qubits targetted by 'with DirtyQubits' are preferably mapped into
+    Test that qubits targetted by 'with CarrierQubits' are preferably
+    mapped into
     """
     dummy = dqubitmapper_testengine.backend
     counter = dqubitmapper_testengine.next_engine.next_engine
@@ -216,7 +212,7 @@ def test_targetting(dqubitmapper_testengine):
     qureg = dqubitmapper_testengine.allocate_qureg(2)
 
     H | qureg[0]
-    with DirtyQubits(dqubitmapper_testengine, [qureg[1]]):
+    with CarrierQubits(dqubitmapper_testengine, [qureg[1]]):
         dqubit = dqubitmapper_testengine.allocate_qubit(dirty=True)
         H | dqubit
         del dqubit
@@ -259,7 +255,7 @@ def test_manual_targetting(dqubitmapper_testengine):
     qubit0 = dqubitmapper_testengine.allocate_qubit()
     qubit1 = dqubitmapper_testengine.allocate_qubit()
 
-    dqubitmapper_testengine.next_engine.set_next_target(qubit1)
+    dqubitmapper_testengine.next_engine.set_next_carrier(qubit1)
 
     H | dqubit
     H | qubit1

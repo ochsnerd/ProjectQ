@@ -19,7 +19,7 @@ except ImportError:
     from fractions import gcd
 
 from projectq.ops import X, CNOT, Toffoli, Tensor, Swap
-from projectq.meta import DirtyQubits, Compute, Uncompute, Control
+from projectq.meta import CarrierQubits, Compute, Uncompute, Control
 from ._gates import AddConstant, SubConstant, AddConstantModN, SubConstantModN
 
 def add_constant_modN(eng, c, N, quint):
@@ -48,7 +48,7 @@ def add_constant_modN(eng, c, N, quint):
 
     indicator = eng.allocate_qubit()
 
-    # b is number in quint
+    # b is number stored in quint
     # !(b < N - c) <=> b + c >= N -> the addition will "overflow" (mod N)
     # and we have to subtract N after
     carry(eng, quint, -N + c, indicator, anc)
@@ -65,7 +65,7 @@ def add_constant_modN(eng, c, N, quint):
     del anc
 
 
-def add_constant(eng, c, quint, anc):
+def add_constant(eng, c, quint, ancilla=None):
     """
     Adds the constant c to the number stored in quantum register quint.
     If supplied, a dirty ancilla quibt (in a general state before the
@@ -77,13 +77,17 @@ def add_constant(eng, c, quint, anc):
                                   will be added to quint
             quint (list<Qubit>) : Quantum register to which the constant will
                                   be added
-            anc (Qubit)         : length >= 2
+            ancilla (Qubit)       : length >= 2
                                   Dirty ancilla qubits to be used as scratch
                                   space during the computation. Can be in a
                                   general state and will be in the same state
                                   after the computation
     """
-    assert len(anc) >= 2, "Need at least one ancilla qubit"
+    if ancilla is None or len(ancilla) < 2:
+        anc = eng.allocate_qureg(2, dirty=True)
+    else:
+        anc = ancilla
+
     n = len(quint)
 
     if n == 1:
@@ -116,10 +120,13 @@ def add_constant(eng, c, quint, anc):
     with Control(eng, anc[0]):
         Tensor(X) | x_h
 
-    add_constant(eng, c_l, x_l, anc=anc)
+    add_constant(eng, c_l, x_l, ancilla=anc)
 
-    add_constant(eng, c_h, x_h, anc=anc)
+    add_constant(eng, c_h, x_h, ancilla=anc)
 
+    if ancilla is None or len(ancilla) < 2:
+        # we allocated our own ancilla
+        del anc
 
 def carry(eng, quint, c, g, anc):
     """

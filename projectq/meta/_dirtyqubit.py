@@ -13,8 +13,9 @@
 #   limitations under the License.
 
 """
-Contains the tools to indicate the preferred targets (qubits which dirty qubits
-get mapped into) during a 'with DirtyQubits'-section to the DirtyQubitMapper.
+Contains the tools to indicate the preferred carriers (qubits which dirty
+qubits get mapped into) during a 'with CarrierQubits'-section to the
+DirtyQubitMapper.
 Also defines the DirtyQubitTag meta tag
 """
 
@@ -31,36 +32,36 @@ class DirtyQubitManagementError(Exception):
 class DirtyQubitTag(object):
     """
     Dirty qubit meta tag
-    Contains a list of targets, which holds the ids of target qubits.
-    These targets are the preferred qubits to map the dirty qubit into
+    Contains a list of carriers, which holds the ids of target qubits.
+    These carriers are the preferred qubits to map the dirty qubit into
     """
-    def __init__(self, targets=[]):
+    def __init__(self, carriers=[]):
         """
-        targets (list<int>): IDs of qubits that the dirty qubit
+        carriers (list<int>): IDs of qubits that the dirty qubit
         preferably gets mapped into
         """
-        self.target_IDs = set(targets)
+        self.carrier_IDs = set(carriers)
 
     def __eq__(self, other):
         # the second part of the expression gets evaluated conditionally,
-        # ie only if both objects are DirtyQubitTags their target sets are
+        # ie only if both objects are DirtyQubitTags their carrier sets are
         # compared
         return (isinstance(other, DirtyQubitTag) and
-                self.target_IDs == other.target_IDs)
+                self.carrier_IDs == other.carrier_IDs)
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
 
-class TargetIndicator(BasicEngine):
+class CarrierIndicator(BasicEngine):
     """
-    Indicates for each dirty qubit allocation which the targets for that dirty
+    Indicates for each dirty qubit allocation which the carriers for that dirty
     qubit are (which qubits the dqubit should get mapped into).
-    Does so by adding the IDs of the targets to the target list in the
+    Does so by adding the IDs of the carriers to the carrier-list in the
     DirtyQubitTag of QubitAllocationGates
     """
-    def __init__(self, target_qubits):
-        self._target_IDs = set([qb.id for qb in target_qubits])
+    def __init__(self, carrier_qubits):
+        self._carrier_IDs = set([qb.id for qb in carrier_qubits])
         self._active_dqubits = set()
 
     def receive(self, cmd_list):
@@ -69,7 +70,7 @@ class TargetIndicator(BasicEngine):
                any(isinstance(tag, DirtyQubitTag) for tag in cmd.tags):
                 for tag in cmd.tags:
                     if isinstance(tag, DirtyQubitTag):
-                        tag.target_IDs.update(self._target_IDs)
+                        tag.carrier_IDs.update(self._carrier_IDs)
                 self._active_dqubits.add(cmd.qubits[0][0].id)
             elif isinstance(cmd.gate, DeallocateQubitGate):
                     self._active_dqubits.discard(cmd.qubits[0][0].id)
@@ -82,19 +83,23 @@ class TargetIndicator(BasicEngine):
                 "has not been deallocated within the section")
 
 
-class DirtyQubits(object):
+class CarrierQubits(object):
     """
-    Indicate to the DirtyQubitMapper the preferred targets (qubits to map dirty
-    qubits into) during a section.
+    Indicate to the DirtyQubitMapper the preferred carriers (qubits to map
+    dirty qubits into) during a section.
 
     Example:
         .. code-block:: python
 
-            with DirtyQubits(eng, targets):
+            with DirtyQubits(eng, carriers):
                 dirty_qubit = eng.allocate_qubit(dirty = True)
                 ...
                 del dirty_qubit
-                # dirty_qubit will be mapped into targets (if possible)
+                # dirty_qubit will be mapped into carriers (if possible)
+
+    Warning:
+            Dirty qubits allocated in a CarrierQubits-section have to be
+            deallocated again in the same section.
     """
 
     def __init__(self, engine, qubits):
@@ -109,22 +114,22 @@ class DirtyQubits(object):
 
         .. code-block:: python
 
-            with DirtyQubits(eng, targets):
+            with DirtyQubits(eng, carriers):
                 ...
         """
         self.engine = engine
         assert(not isinstance(qubits, tuple))
         if isinstance(qubits, BasicQubit):
             qubits = [qubits]
-        self._targets = qubits
+        self._carriers = qubits
 
     def __enter__(self):
-        if len(self._targets) > 0:
-            self._targeter = TargetIndicator(self._targets)
+        if len(self._carriers) > 0:
+            self._targeter = CarrierIndicator(self._carriers)
             insert_engine(self.engine, self._targeter)
 
     def __exit__(self, type, value, traceback):
         # remove control handler from engine list (i.e. skip it)
-        if len(self._targets) > 0:
+        if len(self._carriers) > 0:
             self._targeter.end_targetting()
             drop_engine_after(self.engine)
